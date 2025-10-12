@@ -1,0 +1,191 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>car packages</title>
+
+  <style>
+    /* Basic page layout */
+    body {
+      font-family: sans-serif;
+      margin: 20px;
+      line-height: 1.6;
+      color: #000;
+      background: #fff;
+    }
+
+    h1, h2 {
+      margin-top: 20px;
+      font-weight: bold;
+    }
+
+    /* Search bar */
+    #search {
+      width: 100%;
+      padding: 8px;
+      margin-bottom: 15px;
+      border: 1px solid #000;
+      font-size: 14px;
+    }
+
+    /* Package list */
+    #packages {
+      margin-bottom: 20px;
+    }
+
+    .package {
+      display: inline-block;
+      padding: 6px 10px;
+      border: 1px solid #000;
+      margin: 4px 4px;
+      cursor: pointer;
+      background: #f9f9f9;
+    }
+
+    .package:hover {
+      background: #ddd;
+    }
+
+    /* Install script output */
+    pre {
+      background: #eee;
+      padding: 10px;
+      white-space: pre-wrap;
+      word-wrap: break-word;
+      border: 1px solid #ccc;
+    }
+
+    /* Version text */
+    #version {
+      font-weight: bold;
+      margin-top: 5px;
+      margin-bottom: 15px;
+    }
+
+    /* Embedded package content */
+    #packageContent {
+      margin-top: 20px;
+      padding-top: 15px;
+      border-top: 1px solid #000;
+    }
+  </style>
+</head>
+
+<body>
+
+  <input type="text" id="search" placeholder="Search for a package..." />
+
+  <div id="packages"></div>
+
+  <h2>Install Script</h2>
+  <pre id="installScript">Select a package to view its install script.</pre>
+  <p id="version"></p>
+
+  <h2>Package Page</h2>
+  <div id="packageContent">Package index.html will appear here.</div>
+
+  <script>
+    const owner = 'redroselinux';
+    const repo = 'car-binary-storage';
+
+    const packagesDiv = document.getElementById('packages');
+    const installScriptPre = document.getElementById('installScript');
+    const versionP = document.getElementById('version');
+    const packageContent = document.getElementById('packageContent');
+    const searchInput = document.getElementById('search');
+
+    let packages = [];
+
+    // Fetch the package list from GitHub
+    async function fetchPackages() {
+      const url = `https://api.github.com/repos/${owner}/${repo}/contents/`;
+      const res = await fetch(url);
+      const data = await res.json();
+      packages = data.filter(item => item.type === 'dir');
+      renderPackages(packages);
+    }
+
+    // Render package list
+    function renderPackages(list) {
+      packagesDiv.innerHTML = '';
+      if (list.length === 0) {
+        packagesDiv.innerHTML = '<p>No packages found.</p>';
+        return;
+      }
+
+      list.forEach(pkg => {
+        const div = document.createElement('div');
+        div.className = 'package';
+        div.textContent = pkg.name;
+        div.onclick = () => selectPackage(pkg.name);
+        packagesDiv.appendChild(div);
+      });
+    }
+
+    // Load both install script and HTML page
+    async function selectPackage(pkgName) {
+      await fetchInstallScript(pkgName);
+      await loadPackagePage(pkgName);
+    }
+
+    // Fetch install_script
+    async function fetchInstallScript(pkgName) {
+      const url = `https://raw.githubusercontent.com/${owner}/${repo}/main/${pkgName}/install_script`;
+      try {
+        const res = await fetch(url);
+        if (!res.ok) throw new Error('Not found');
+
+        const text = await res.text();
+        installScriptPre.textContent = text;
+
+        // Extract version
+        const match = text.match(/version\s*=\s*"(.*)"/);
+        if (match && match[1] !== "will.be.edited.post.install") {
+          versionP.textContent = `Version: ${match[1]}`;
+        } else {
+          versionP.textContent = '';
+        }
+      } catch {
+        installScriptPre.textContent = 'Install script not found for this package.';
+        versionP.textContent = '';
+      }
+    }
+
+    // Fetch and inject index.html content
+    async function loadPackagePage(pkgName) {
+      const url = `https://raw.githubusercontent.com/${owner}/${repo}/main/${pkgName}/index.html`;
+
+      try {
+        const res = await fetch(url);
+        if (!res.ok) throw new Error('Not found');
+        let htmlText = await res.text();
+
+        // Fix relative links (src/href)
+        const baseUrl = `https://raw.githubusercontent.com/${owner}/${repo}/main/${pkgName}/`;
+        htmlText = htmlText.replace(
+          /(src|href)="(?!https?:\/\/)([^"]+)"/g,
+          `$1="${baseUrl}$2"`
+        );
+
+        packageContent.innerHTML = htmlText;
+      } catch {
+        packageContent.innerHTML = '<p>index.html not found for this package.</p>';
+      }
+    }
+
+    // Filter search
+    searchInput.addEventListener('input', () => {
+      const term = searchInput.value.toLowerCase();
+      const filtered = packages.filter(pkg =>
+        pkg.name.toLowerCase().includes(term)
+      );
+      renderPackages(filtered);
+    });
+
+    // Load initial package list
+    fetchPackages();
+  </script>
+
+</body>
+</html>
