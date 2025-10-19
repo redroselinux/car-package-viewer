@@ -1,191 +1,213 @@
 <!DOCTYPE html>
 <html lang="en">
 <head>
-  <meta charset="UTF-8" />
-  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-  <title>car packages</title>
+<meta charset="UTF-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1.0" />
+<title>Car Packages</title>
+<style>
+body {
+  margin: 0;
+  background-color: rgb(17, 17, 17);
+  color: white;
+  font-family: monospace;
+  scroll-behavior: smooth;
+}
 
-  <style>
-    /* Basic page layout */
-    body {
-      font-family: sans-serif;
-      margin: 20px;
-      line-height: 1.6;
-      color: #000;
-      background: #fff;
-    }
+#search {
+  display: block;
+  width: 100%;
+  max-width: 600px;
+  margin: 2em auto;
+  padding: 0.5em 1em;
+  background-color: rgb(24, 24, 24);
+  border: 1px solid rgb(60, 60, 60);
+  color: white;
+  font-family: monospace;
+}
 
-    h1, h2 {
-      margin-top: 20px;
-      font-weight: bold;
-    }
+.software-list {
+  margin-top: 2em;
+  display: flex;
+  flex-direction: column;
+  gap: 2em;
+  width: 80%;
+  max-width: 800px;
+  text-align: left;
+  margin-left: auto;
+  margin-right: auto;
+}
 
-    /* Search bar */
-    #search {
-      width: 100%;
-      padding: 8px;
-      margin-bottom: 15px;
-      border: 1px solid #000;
-      font-size: 14px;
-    }
+.package-item {
+  padding: 1em;
+  background-color: rgb(24, 24, 24);
+  border: 1px solid rgb(60, 60, 60);
+  transition: transform 0.2s, background 0.2s;
+  cursor: pointer;
+}
 
-    /* Package list */
-    #packages {
-      margin-bottom: 20px;
-    }
+.package-item:hover {
+  background-color: rgb(32, 32, 32);
+}
 
-    .package {
-      display: inline-block;
-      padding: 6px 10px;
-      border: 1px solid #000;
-      margin: 4px 4px;
-      cursor: pointer;
-      background: #f9f9f9;
-    }
+.package-item h3 {
+  margin: 0 0 0.3em 0;
+  color: rgb(255, 60, 60);
+}
 
-    .package:hover {
-      background: #ddd;
-    }
+.package-item .repo {
+  font-size: 0.9em;
+  color: rgb(200, 200, 200);
+  margin-bottom: 0.5em;
+}
 
-    /* Install script output */
-    pre {
-      background: #eee;
-      padding: 10px;
-      white-space: pre-wrap;
-      word-wrap: break-word;
-      border: 1px solid #ccc;
-    }
+.package-item pre {
+  background-color: rgb(17, 17, 17);
+  border: 1px solid rgb(60, 60, 60);
+  padding: 0.5em;
+  overflow-x: auto;
+  font-family: monospace;
+  margin-top: 0.5em;
+}
 
-    /* Version text */
-    #version {
-      font-weight: bold;
-      margin-top: 5px;
-      margin-bottom: 15px;
-    }
+.trusted {
+  font-weight: bold;
+  padding: 2px 6px;
+  border-radius: 4px;
+  font-size: 12px;
+  margin-left: 6px;
+}
 
-    /* Embedded package content */
-    #packageContent {
-      margin-top: 20px;
-      padding-top: 15px;
-      border-top: 1px solid #000;
-    }
-  </style>
+.trusted-true { background: #4CAF50; color: white; }
+.trusted-maybe { background: #FF9800; color: white; }
+.trusted-false { background: #F44336; color: white; }
+
+.dep-tag {
+  font-size: 10px;
+  background: #FF9800;
+  color: white;
+  padding: 2px 4px;
+  border-radius: 3px;
+  margin-left: 4px;
+  font-weight: bold;
+}
+
+.description {
+  margin-top: 0.3em;
+  color: rgb(200,200,200);
+  font-size: 0.95em;
+}
+
+.outdated {
+  font-size: 12px;
+  font-weight: bold;
+  padding: 2px 6px;
+  border-radius: 4px;
+  margin-left: 6px;
+}
+
+.outdated-true { background: #F44336; color: white; }
+.outdated-false { background: #4CAF50; color: white; }
+</style>
 </head>
-
 <body>
 
-  <input type="text" id="search" placeholder="Search for a package..." />
+<input type="text" id="search" placeholder="Search packages..." />
+<div class="software-list" id="packages"></div>
 
-  <div id="packages"></div>
+<script>
+const repositories = [
+  { owner: 'redroselinux', repo: 'car-binary-storage' },
+  { owner: 'otherowner', repo: 'other-repo' }
+];
 
-  <h2>Install Script</h2>
-  <pre id="installScript">Select a package to view its install script.</pre>
-  <p id="version"></p>
+const packagesDiv = document.getElementById('packages');
+const searchInput = document.getElementById('search');
 
-  <h2>Package Page</h2>
-  <div id="packageContent">Package index.html will appear here.</div>
+let allPackages = [];
 
-  <script>
-    const owner = 'redroselinux';
-    const repo = 'car-binary-storage';
-
-    const packagesDiv = document.getElementById('packages');
-    const installScriptPre = document.getElementById('installScript');
-    const versionP = document.getElementById('version');
-    const packageContent = document.getElementById('packageContent');
-    const searchInput = document.getElementById('search');
-
-    let packages = [];
-
-    // Fetch the package list from GitHub
-    async function fetchPackages() {
-      const url = `https://api.github.com/repos/${owner}/${repo}/contents/`;
+async function fetchAllPackages() {
+  allPackages = [];
+  for (const repo of repositories) {
+    const url = `https://api.github.com/repos/${repo.owner}/${repo.repo}/contents/`;
+    try {
       const res = await fetch(url);
       const data = await res.json();
-      packages = data.filter(item => item.type === 'dir');
-      renderPackages(packages);
+      const dirs = data.filter(item => item.type === 'dir').map(d => ({...d, owner: repo.owner, repo: repo.repo}));
+      allPackages = allPackages.concat(dirs);
+    } catch (err) {
+      console.error(`Failed to fetch packages from ${repo.owner}/${repo.repo}`);
     }
+  }
+  renderPackages(allPackages);
+}
 
-    // Render package list
-    function renderPackages(list) {
-      packagesDiv.innerHTML = '';
-      if (list.length === 0) {
-        packagesDiv.innerHTML = '<p>No packages found.</p>';
-        return;
-      }
+async function renderPackages(list) {
+  packagesDiv.innerHTML = '';
+  if (!list.length) { packagesDiv.innerHTML = '<p style="text-align:center;">No packages found.</p>'; return; }
 
-      list.forEach(pkg => {
-        const div = document.createElement('div');
-        div.className = 'package';
-        div.textContent = pkg.name;
-        div.onclick = () => selectPackage(pkg.name);
-        packagesDiv.appendChild(div);
-      });
-    }
+  for (const pkg of list) {
+    const item = document.createElement('div');
+    item.className = 'package-item';
+    const url = `https://raw.githubusercontent.com/${pkg.owner}/${pkg.repo}/main/${pkg.name}/install_script`;
 
-    // Load both install script and HTML page
-    async function selectPackage(pkgName) {
-      await fetchInstallScript(pkgName);
-      await loadPackagePage(pkgName);
-    }
+    let scriptText = 'Install script not found.';
+    let versionText = '';
+    let trustedSpan = '';
+    let depTag = '';
+    let descriptionText = '';
+    let outdatedSpan = '';
 
-    // Fetch install_script
-    async function fetchInstallScript(pkgName) {
-      const url = `https://raw.githubusercontent.com/${owner}/${repo}/main/${pkgName}/install_script`;
-      try {
-        const res = await fetch(url);
-        if (!res.ok) throw new Error('Not found');
+    try {
+      const res = await fetch(url);
+      if (res.ok) {
+        scriptText = await res.text();
 
-        const text = await res.text();
-        installScriptPre.textContent = text;
+        // Version
+        const versionMatch = scriptText.match(/version\s*=\s*"(.*)"/);
+        versionText = versionMatch ? `Version: ${versionMatch[1]}` : '';
 
-        // Extract version
-        const match = text.match(/version\s*=\s*"(.*)"/);
-        if (match && match[1] !== "will.be.edited.post.install") {
-          versionP.textContent = `Version: ${match[1]}`;
-        } else {
-          versionP.textContent = '';
+        // Trusted
+        const trustedMatch = scriptText.match(/trusted\s*=\s*"(.*)"/);
+        if (trustedMatch) {
+          trustedSpan = `<span class="trusted trusted-${trustedMatch[1].toLowerCase()}">${trustedMatch[1]}</span>`;
         }
-      } catch {
-        installScriptPre.textContent = 'Install script not found for this package.';
-        versionP.textContent = '';
+
+        // Pacman deps highlight as maybe
+        const pacmanDepsMatch = scriptText.match(/pacman_deps\s*=\s*\[(.*?)\]/);
+        if (pacmanDepsMatch) depTag = `<span class="dep-tag">uses pacman</span>`;
+
+        // Description
+        const descMatch = scriptText.match(/description\s*=\s*"(.*)"/);
+        if (descMatch) descriptionText = descMatch[1];
+
+        // Outdated
+        const outdatedMatch = scriptText.match(/outdated\s*=\s*(True|False)/);
+        if (outdatedMatch) {
+          const val = outdatedMatch[1].toLowerCase();
+          outdatedSpan = `<span class="outdated outdated-${val}">Outdated: ${val}</span>`;
+        }
       }
-    }
+    } catch {}
 
-    // Fetch and inject index.html content
-    async function loadPackagePage(pkgName) {
-      const url = `https://raw.githubusercontent.com/${owner}/${repo}/main/${pkgName}/index.html`;
+    item.innerHTML = `
+      <div class="repo">${pkg.owner}/${pkg.repo}</div>
+      <h3>${pkg.name} ${trustedSpan} ${outdatedSpan}</h3>
+      <div class="description">${descriptionText}</div>
+      ${depTag ? depTag : ''} ${versionText ? versionText : ''}
+      <pre>${scriptText}</pre>
+    `;
+    packagesDiv.appendChild(item);
+  }
+}
 
-      try {
-        const res = await fetch(url);
-        if (!res.ok) throw new Error('Not found');
-        let htmlText = await res.text();
+// Search
+searchInput.addEventListener('input', () => {
+  const term = searchInput.value.toLowerCase();
+  renderPackages(allPackages.filter(pkg => pkg.name.toLowerCase().includes(term)));
+});
 
-        // Fix relative links (src/href)
-        const baseUrl = `https://raw.githubusercontent.com/${owner}/${repo}/main/${pkgName}/`;
-        htmlText = htmlText.replace(
-          /(src|href)="(?!https?:\/\/)([^"]+)"/g,
-          `$1="${baseUrl}$2"`
-        );
-
-        packageContent.innerHTML = htmlText;
-      } catch {
-        packageContent.innerHTML = '<p>index.html not found for this package.</p>';
-      }
-    }
-
-    // Filter search
-    searchInput.addEventListener('input', () => {
-      const term = searchInput.value.toLowerCase();
-      const filtered = packages.filter(pkg =>
-        pkg.name.toLowerCase().includes(term)
-      );
-      renderPackages(filtered);
-    });
-
-    // Load initial package list
-    fetchPackages();
-  </script>
+fetchAllPackages();
+</script>
 
 </body>
 </html>
