@@ -1,212 +1,215 @@
 <!DOCTYPE html>
 <html lang="en">
 <head>
-<meta charset="UTF-8" />
-<meta name="viewport" content="width=device-width, initial-scale=1.0" />
-<title>Car Packages</title>
+<meta charset="utf-8" />
+<meta name="viewport" content="width=device-width,initial-scale=1" />
+<title>Packages</title>
 <style>
-body {
-  margin: 0;
-  background-color: rgb(17, 17, 17);
-  color: white;
-  font-family: monospace;
-  scroll-behavior: smooth;
-}
-
-#search {
-  display: block;
-  width: 100%;
-  max-width: 600px;
-  margin: 2em auto;
-  padding: 0.5em 1em;
-  background-color: rgb(24, 24, 24);
-  border: 1px solid rgb(60, 60, 60);
-  color: white;
-  font-family: monospace;
-}
-
-.software-list {
-  margin-top: 2em;
-  display: flex;
-  flex-direction: column;
-  gap: 2em;
-  width: 80%;
-  max-width: 800px;
-  text-align: left;
-  margin-left: auto;
-  margin-right: auto;
-}
-
-.package-item {
-  padding: 1em;
-  background-color: rgb(24, 24, 24);
-  border: 1px solid rgb(60, 60, 60);
-  transition: transform 0.2s, background 0.2s;
-  cursor: pointer;
-}
-
-.package-item:hover {
-  background-color: rgb(32, 32, 32);
-}
-
-.package-item h3 {
-  margin: 0 0 0.3em 0;
-  color: rgb(255, 60, 60);
-}
-
-.package-item .repo {
-  font-size: 0.9em;
-  color: rgb(200, 200, 200);
-  margin-bottom: 0.5em;
-}
-
-.package-item pre {
-  background-color: rgb(17, 17, 17);
-  border: 1px solid rgb(60, 60, 60);
-  padding: 0.5em;
-  overflow-x: auto;
-  font-family: monospace;
-  margin-top: 0.5em;
-}
-
-.trusted {
-  font-weight: bold;
-  padding: 2px 6px;
-  border-radius: 4px;
-  font-size: 12px;
-  margin-left: 6px;
-}
-
-.trusted-true { background: #4CAF50; color: white; }
-.trusted-maybe { background: #FF9800; color: white; }
-.trusted-false { background: #F44336; color: white; }
-
-.dep-tag {
-  font-size: 10px;
-  background: #FF9800;
-  color: white;
-  padding: 2px 4px;
-  border-radius: 3px;
-  margin-left: 4px;
-  font-weight: bold;
-}
-
-.description {
-  margin-top: 0.3em;
-  color: rgb(200,200,200);
-  font-size: 0.95em;
-}
-
-.outdated {
-  font-size: 12px;
-  font-weight: bold;
-  padding: 2px 6px;
-  border-radius: 4px;
-  margin-left: 6px;
-}
-
-.outdated-true { background: #F44336; color: white; }
-.outdated-false { background: #4CAF50; color: white; }
+  :root{--bg:#111;--card:#181818;--border:#444;--muted:#888;--accent:#ff3c3c}
+  html,body{height:100%;margin:0;background:var(--bg);color:#fff;font-family:monospace}
+  #search{width:100%;max-width:620px;margin:2rem auto;display:block;padding:.5rem 1rem;background:var(--card);border:1px solid var(--border);color:#fff}
+  .package-list{width:86%;max-width:920px;margin:0 auto;display:flex;flex-direction:column;gap:.6rem}
+  .package-item{background:var(--card);border:1px solid var(--border);padding:.8rem;cursor:pointer;display:flex;align-items:center;justify-content:space-between}
+  .package-item:hover{background:#242424}
+  .pkg-name{font-weight:700}
+  .muted{color:var(--muted)}
+  .repo{font-size:.9rem;color:#bdbdbd;margin-left:1rem}
+  .script{display:none;padding:.6rem;border-top:1px dashed var(--border);background:rgba(255,255,255,0.02);margin-top:.5rem}
+  .script pre{margin:0;background:#0b0b0b;padding:.6rem;border:1px solid var(--border);overflow:auto}
+  .meta{font-size:.85rem;color:#cfcfcf}
+  .badge{font-size:.75rem;padding:2px 6px;border-radius:4px;margin-left:6px}
+  .trusted-true{background:#4CAF50;color:#fff}
+  .trusted-false{background:#777;color:#fff}
+  .outdated-true{background:#F44336;color:#fff}
+  .dep-tag{font-size:.72rem;background:#FF9800;color:#fff;padding:2px 6px;border-radius:4px;margin-left:6px}
+  .center{text-align:center;color:#bbb;padding:2rem}
 </style>
 </head>
 <body>
 
-<input type="text" id="search" placeholder="Search packages..." />
-<div class="software-list" id="packages"></div>
+<input id="search" placeholder="Search packages... (only package names shown)" />
+<div class="package-list" id="list"></div>
 
 <script>
-const repositories = [
+// Repositories to scan
+const REPOS = [
   { owner: 'redroselinux', repo: 'car-binary-storage' },
   { owner: 'redroselinux', repo: 'car-coreutils-repo' }
 ];
 
-const packagesDiv = document.getElementById('packages');
-const searchInput = document.getElementById('search');
-
+const listEl = document.getElementById('list');
+const searchEl = document.getElementById('search');
 let allPackages = [];
 
-async function fetchAllPackages() {
-  allPackages = [];
-  for (const repo of repositories) {
-    const url = `https://api.github.com/repos/${repo.owner}/${repo.repo}/contents/`;
-    try {
-      const res = await fetch(url);
-      const data = await res.json();
-      const dirs = data.filter(item => item.type === 'dir').map(d => ({...d, owner: repo.owner, repo: repo.repo}));
-      allPackages = allPackages.concat(dirs);
-    } catch (err) {
-      console.error(`Failed to fetch packages from ${repo.owner}/${repo.repo}`);
-    }
+async function fetchDirsFromRepo(owner, repo) {
+  const url = `https://api.github.com/repos/${owner}/${repo}/contents/`;
+  try {
+    const r = await fetch(url);
+    if (!r.ok) return [];
+    const data = await r.json();
+    return data.filter(i => i.type === 'dir').map(d => ({ ...d, owner, repo }));
+  } catch (e) {
+    console.error('fetch error', e);
+    return [];
   }
-  renderPackages(allPackages);
 }
 
-async function renderPackages(list) {
-  packagesDiv.innerHTML = '';
-  if (!list.length) { packagesDiv.innerHTML = '<p style="text-align:center;">No packages found.</p>'; return; }
+async function fetchInstallScript(pkg) {
+  const url = `https://raw.githubusercontent.com/${pkg.owner}/${pkg.repo}/main/${pkg.name}/install_script`;
+  try {
+    const r = await fetch(url);
+    if (!r.ok) return '';
+    return await r.text();
+  } catch {
+    return '';
+  }
+}
 
-  for (const pkg of list) {
+function parseMeta(scriptText) {
+  const meta = { raw: scriptText, version: '', trusted: 'true', pacmanDeps: false, description: '', outdated: false };
+  if (!scriptText) return meta;
+  const v = scriptText.match(/version\s*=\s*"([^"]+)"/i);
+  if (v) meta.version = v[1];
+  const t = scriptText.match(/trusted\s*=\s*"([^"]+)"/i);
+  if (t) meta.trusted = t[1].toLowerCase();
+  const p = scriptText.match(/pacman_deps\s*=\s*\[(.*?)\]/is);
+  if (p) meta.pacmanDeps = true;
+  const d = scriptText.match(/description\s*=\s*"([^"]+)"/i);
+  if (d) meta.description = d[1];
+  const o = scriptText.match(/outdated\s*=\s*(True|False)/i);
+  if (o) meta.outdated = o[1].toLowerCase() === 'true';
+  return meta;
+}
+
+function escapeHtml(s){
+  return s.replace(/[&<>]/g, c => ({'&':'&amp;','<':'&lt;','>':'&gt;'}[c]));
+}
+
+async function loadAll() {
+  allPackages = [];
+  for (const r of REPOS) {
+    const dirs = await fetchDirsFromRepo(r.owner, r.repo);
+    allPackages.push(...dirs);
+  }
+  // render visible list (name + repo only)
+  render(allPackages);
+}
+
+async function render(pkgs) {
+  listEl.innerHTML = '';
+  if (!pkgs.length) { listEl.innerHTML = '<div class="center">No packages found.</div>'; return; }
+
+  for (const pkg of pkgs) {
     const item = document.createElement('div');
     item.className = 'package-item';
-    const url = `https://raw.githubusercontent.com/${pkg.owner}/${pkg.repo}/main/${pkg.name}/install_script`;
 
-    let scriptText = 'Install script not found.';
-    let versionText = '';
-    let trustedSpan = '';
-    let depTag = '';
-    let descriptionText = '';
-    let outdatedSpan = '';
+    // Name + repo shown initially
+    const left = document.createElement('div');
+    left.style.display = 'flex';
+    left.style.alignItems = 'center';
 
-    try {
-      const res = await fetch(url);
-      if (res.ok) {
-        scriptText = await res.text();
+    const nameEl = document.createElement('div');
+    nameEl.className = 'pkg-name';
+    nameEl.textContent = pkg.name;
 
-        // Version
-        const versionMatch = scriptText.match(/version\s*=\s*"(.*)"/);
-        versionText = versionMatch ? `Version: ${versionMatch[1]}` : '';
+    const repoEl = document.createElement('div');
+    repoEl.className = 'repo';
+    repoEl.textContent = `${pkg.owner}/${pkg.repo}`;
 
-        // Trusted
-        const trustedMatch = scriptText.match(/trusted\s*=\s*"(.*)"/);
-        if (trustedMatch) {
-          trustedSpan = `<span class="trusted trusted-${trustedMatch[1].toLowerCase()}">${trustedMatch[1]}</span>`;
+    left.appendChild(nameEl);
+    left.appendChild(repoEl);
+
+    const right = document.createElement('div');
+    right.className = 'meta';
+    right.textContent = '';
+
+    item.appendChild(left);
+    item.appendChild(right);
+
+    // hidden script & metadata area
+    const details = document.createElement('div');
+    details.className = 'script';
+
+    item.appendChild(details);
+
+    // On first click we fetch metadata + script and expand
+    let expanded = false;
+    let cachedMeta = null;
+
+    item.addEventListener('click', async (e) => {
+      // prevent click when clicking links inside details later
+      if (!expanded) {
+        // fetch script and parse metadata
+        const raw = await fetchInstallScript(pkg);
+        const meta = parseMeta(raw);
+        cachedMeta = meta;
+
+        // Apply muted style if outdated OR trusted explicitly false
+        if (meta.outdated || meta.trusted === 'false') {
+          nameEl.classList.add('muted');
         }
 
-        // Pacman deps highlight as maybe
-        const pacmanDepsMatch = scriptText.match(/pacman_deps\s*=\s*\[(.*?)\]/);
-        if (pacmanDepsMatch) depTag = `<span class="dep-tag">uses pacman</span>`;
+        // Build details view
+        const infoLine = document.createElement('div');
+        infoLine.className = 'meta';
 
-        // Description
-        const descMatch = scriptText.match(/description\s*=\s*"(.*)"/);
-        if (descMatch) descriptionText = descMatch[1];
+        const version = meta.version ? `Version: ${meta.version}` : '';
+        infoLine.textContent = version;
 
-        // Outdated
-        const outdatedMatch = scriptText.match(/outdated\s*=\s*(True|False)/);
-        if (outdatedMatch) {
-          const val = outdatedMatch[1].toLowerCase();
-          outdatedSpan = `<span class="outdated outdated-${val}">Outdated: ${val}</span>`;
+        // trusted badge
+        const tBadge = document.createElement('span');
+        tBadge.className = `badge ${meta.trusted === 'false' ? 'trusted-false' : 'trusted-true'}`;
+        tBadge.textContent = `trusted: ${meta.trusted}`;
+        infoLine.appendChild(tBadge);
+
+        // outdated badge
+        const oBadge = document.createElement('span');
+        oBadge.className = `badge ${meta.outdated ? 'outdated-true' : ''}`;
+        if (meta.outdated) { oBadge.textContent = 'outdated: true'; infoLine.appendChild(oBadge); }
+
+        // dep tag
+        if (meta.pacmanDeps) {
+          const dTag = document.createElement('span');
+          dTag.className = 'dep-tag';
+          dTag.textContent = 'uses pacman';
+          infoLine.appendChild(dTag);
         }
+
+        // description
+        if (meta.description) {
+          const desc = document.createElement('div');
+          desc.className = 'meta';
+          desc.textContent = meta.description;
+          details.appendChild(desc);
+        }
+
+        details.appendChild(infoLine);
+
+        // script block
+        const pre = document.createElement('pre');
+        pre.innerHTML = escapeHtml(meta.raw || 'Install script not found.');
+        details.appendChild(pre);
+
+        details.style.display = 'block';
+        expanded = true;
+      } else {
+        // toggle visibility
+        details.style.display = details.style.display === 'none' ? 'block' : 'none';
       }
-    } catch {}
+    });
 
-    item.innerHTML = `
-      <div class="repo">${pkg.owner}/${pkg.repo}</div>
-      <h3>${pkg.name} ${trustedSpan} ${outdatedSpan}</h3>
-      <div class="description">${descriptionText}</div>
-      ${depTag ? depTag : ''} ${versionText ? versionText : ''}
-      <pre>${scriptText}</pre>
-    `;
-    packagesDiv.appendChild(item);
+    listEl.appendChild(item);
   }
 }
 
-// Search
-searchInput.addEventListener('input', () => {
-  const term = searchInput.value.toLowerCase();
-  renderPackages(allPackages.filter(pkg => pkg.name.toLowerCase().includes(term)));
+// simple search by package name
+searchEl.addEventListener('input', () => {
+  const q = searchEl.value.trim().toLowerCase();
+  if (!q) return render(allPackages);
+  render(allPackages.filter(p => p.name.toLowerCase().includes(q)));
 });
 
-fetchAllPackages();
+loadAll();
 </script>
 
 </body>
