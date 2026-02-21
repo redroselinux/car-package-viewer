@@ -1,216 +1,282 @@
-<!DOCTYPE html>
+<!doctype html>
 <html lang="en">
-<head>
-<meta charset="utf-8" />
-<meta name="viewport" content="width=device-width,initial-scale=1" />
-<title>Packages</title>
-<style>
-  :root{--bg:#111;--card:#181818;--border:#444;--muted:#888;--accent:#ff3c3c}
-  html,body{height:100%;margin:0;background:var(--bg);color:#fff;font-family:monospace}
-  #search{width:100%;max-width:620px;margin:2rem auto;display:block;padding:.5rem 1rem;background:var(--card);border:1px solid var(--border);color:#fff}
-  .package-list{width:86%;max-width:920px;margin:0 auto;display:flex;flex-direction:column;gap:.6rem}
-  .package-item{background:var(--card);border:1px solid var(--border);padding:.8rem;cursor:pointer;display:flex;align-items:center;justify-content:space-between}
-  .package-item:hover{background:#242424}
-  .pkg-name{font-weight:700}
-  .muted{color:var(--muted)}
-  .repo{font-size:.9rem;color:#bdbdbd;margin-left:1rem}
-  .script{display:none;padding:.6rem;border-top:1px dashed var(--border);background:rgba(255,255,255,0.02);margin-top:.5rem}
-  .script pre{margin:0;background:#0b0b0b;padding:.6rem;border:1px solid var(--border);overflow:auto}
-  .meta{font-size:.85rem;color:#cfcfcf}
-  .badge{font-size:.75rem;padding:2px 6px;border-radius:4px;margin-left:6px}
-  .trusted-true{background:#4CAF50;color:#fff}
-  .trusted-false{background:#777;color:#fff}
-  .outdated-true{background:#F44336;color:#fff}
-  .dep-tag{font-size:.72rem;background:#FF9800;color:#fff;padding:2px 6px;border-radius:4px;margin-left:6px}
-  .center{text-align:center;color:#bbb;padding:2rem}
-</style>
-</head>
-<body>
+    <head>
+        <meta charset="UTF-8" />
+        <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+        <title>Car Package Viewer</title>
+        <style>
+            :root {
+                --bg: #0e0e11;
+                --fg: #eaeaf0;
+                --muted: #b0b0c0;
+                --accent: #ea645d;
+                --card: #16161d;
+                --border: #262636;
+                --code-bg: #09090d;
+            }
 
-<input id="search" placeholder="Search packages... (only package names shown)" />
-<div class="package-list" id="list"></div>
+            * {
+                box-sizing: border-box;
+            }
 
-<script>
-// Repositories to scan
-const REPOS = [
-  { owner: 'redroselinux', repo: 'car-binary-storage' },
-  { owner: 'redroselinux', repo: 'car-coreutils-repo' }
-];
+            body {
+                margin: 0;
+                font-family: system-ui, sans-serif;
+                background: var(--bg);
+                color: var(--fg);
+                line-height: 1.4;
+            }
 
-const listEl = document.getElementById('list');
-const searchEl = document.getElementById('search');
-let allPackages = [];
+            header {
+                padding: 1.5rem;
+                border-bottom: 1px solid var(--border);
+                text-align: left;
+                max-width: 1200px;
+                margin: 0 auto;
+            }
 
-async function fetchDirsFromRepo(owner, repo) {
-  const url = `https://api.github.com/repos/${owner}/${repo}/contents/`;
-  try {
-    const r = await fetch(url);
-    if (!r.ok) return [];
-    const data = await r.json();
-    return data.filter(i => i.type === 'dir').map(d => ({ ...d, owner, repo }));
-  } catch (e) {
-    console.error('fetch error', e);
-    return [];
-  }
-}
+            header h1 {
+                font-size: 1.5rem;
+                margin: 0;
+                color: var(--accent);
+            }
+            #status {
+                font-size: 0.8rem;
+                color: var(--muted);
+            }
 
-async function fetchInstallScript(pkg) {
-  const url = `https://raw.githubusercontent.com/${pkg.owner}/${pkg.repo}/main/${pkg.name}/install_script`;
-  try {
-    const r = await fetch(url);
-    if (!r.ok) return '';
-    return await r.text();
-  } catch {
-    return '';
-  }
-}
+            .controls {
+                max-width: 1200px;
+                margin: 1rem auto;
+                padding: 0 1.5rem;
+            }
 
-function parseMeta(scriptText) {
-  const meta = { raw: scriptText, version: '', trusted: 'true', pacmanDeps: false, description: '', outdated: false };
-  if (!scriptText) return meta;
-  const v = scriptText.match(/version\s*=\s*"([^"]+)"/i);
-  if (v) meta.version = v[1];
-  const t = scriptText.match(/trusted\s*=\s*"([^"]+)"/i);
-  if (t) meta.trusted = t[1].toLowerCase();
-  const p = scriptText.match(/pacman_deps\s*=\s*\[(.*?)\]/is);
-  if (p) meta.pacmanDeps = true;
-  const d = scriptText.match(/description\s*=\s*"([^"]+)"/i);
-  if (d) meta.description = d[1];
-  const o = scriptText.match(/outdated\s*=\s*(True|False)/i);
-  if (o) meta.outdated = o[1].toLowerCase() === 'true';
-  return meta;
-}
+            #search {
+                width: 100%;
+                background: var(--card);
+                border: 1px solid var(--border);
+                color: var(--fg);
+                padding: 0.5rem 0.8rem;
+                border-radius: 6px;
+                outline: none;
+                font-size: 0.9rem;
+            }
 
-function escapeHtml(s){
-  return s.replace(/[&<>]/g, c => ({'&':'&amp;','<':'&lt;','>':'&gt;'}[c]));
-}
+            #package-list {
+                display: grid;
+                grid-template-columns: repeat(auto-fill, minmax(280px, 1fr));
+                gap: 0.8rem;
+                padding: 1rem 1.5rem;
+                max-width: 1200px;
+                margin: 0 auto;
+            }
 
-async function loadAll() {
-  allPackages = [];
-  for (const r of REPOS) {
-    const dirs = await fetchDirsFromRepo(r.owner, r.repo);
-    allPackages.push(...dirs);
-  }
-  // render visible list (name + repo only)
-  render(allPackages);
-}
+            .package-card {
+                background: var(--card);
+                border: 1px solid var(--border);
+                border-radius: 8px;
+                padding: 0.8rem;
+                display: flex;
+                flex-direction: column;
+            }
 
-async function render(pkgs) {
-  listEl.innerHTML = '';
-  if (!pkgs.length) { listEl.innerHTML = '<div class="center">No packages found.</div>'; return; }
+            .pkg-header {
+                display: flex;
+                justify-content: space-between;
+                align-items: flex-start;
+                margin-bottom: 0.2rem;
+            }
 
-  for (const pkg of pkgs) {
-    const item = document.createElement('div');
-    item.className = 'package-item';
+            .pkg-title {
+                font-size: 1rem;
+                font-weight: 700;
+                color: var(--accent);
+                margin: 0;
+            }
+            .pkg-version {
+                font-family: monospace;
+                font-size: 0.7rem;
+                color: var(--muted);
+            }
+            .pkg-license {
+                font-size: 0.65rem;
+                text-transform: uppercase;
+                color: var(--muted);
+                margin-bottom: 0.4rem;
+            }
+            .pkg-desc {
+                font-size: 0.8rem;
+                opacity: 0.8;
+                margin: 0.3rem 0 0.8rem 0;
+                min-height: 2.4em;
+            }
 
-    // Name + repo shown initially
-    const left = document.createElement('div');
-    left.style.display = 'flex';
-    left.style.alignItems = 'center';
+            /* --- Install Command Block --- */
+            .install-cmd {
+                background: var(--code-bg);
+                border: 1px solid var(--border);
+                padding: 0.4rem 0.6rem;
+                border-radius: 4px;
+                font-family: monospace;
+                font-size: 0.75rem;
+                color: #fff;
+                cursor: pointer;
+                position: relative;
+                margin-bottom: 0.5rem;
+                white-space: nowrap;
+                overflow: hidden;
+                text-overflow: ellipsis;
+            }
 
-    const nameEl = document.createElement('div');
-    nameEl.className = 'pkg-name';
-    nameEl.textContent = pkg.name;
+            .install-cmd:hover {
+                border-color: var(--accent);
+            }
+            .install-cmd::after {
+                content: "click to copy";
+                position: absolute;
+                right: 5px;
+                top: 50%;
+                transform: translateY(-50%);
+                font-size: 0.6rem;
+                color: var(--accent);
+                opacity: 0;
+                transition: opacity 0.2s;
+            }
+            .install-cmd:hover::after {
+                opacity: 1;
+            }
 
-    const repoEl = document.createElement('div');
-    repoEl.className = 'repo';
-    repoEl.textContent = `${pkg.owner}/${pkg.repo}`;
+            .dl-link {
+                font-size: 0.75rem;
+                color: var(--muted);
+                text-decoration: underline;
+                align-self: flex-start;
+            }
+            .dl-link:hover {
+                color: var(--accent);
+            }
 
-    left.appendChild(nameEl);
-    left.appendChild(repoEl);
+            .hidden {
+                display: none;
+            }
+        </style>
+    </head>
+    <body>
+        <header>
+            <h1>Car Package Viewer</h1>
+            <div id="status">Syncing packages...</div>
+        </header>
 
-    const right = document.createElement('div');
-    right.className = 'meta';
-    right.textContent = '';
+        <div class="controls">
+            <input
+                type="text"
+                id="search"
+                placeholder="Filter..."
+                oninput="filter()"
+            />
+        </div>
 
-    item.appendChild(left);
-    item.appendChild(right);
+        <div id="package-list"></div>
 
-    // hidden script & metadata area
-    const details = document.createElement('div');
-    details.className = 'script';
+        <script>
+            const README_URL =
+                "https://cdn.jsdelivr.net/gh/redroselinux/car3-pkgs@main/README";
+            const list = document.getElementById("package-list");
+            const status = document.getElementById("status");
+            let allPkgs = [];
 
-    item.appendChild(details);
+            async function streamData() {
+                try {
+                    const response = await fetch(README_URL);
+                    const reader = response.body.getReader();
+                    const decoder = new TextDecoder();
+                    let remainder = "";
+                    let current = {};
 
-    // On first click we fetch metadata + script and expand
-    let expanded = false;
-    let cachedMeta = null;
+                    while (true) {
+                        const { value, done } = await reader.read();
+                        if (done) break;
 
-    item.addEventListener('click', async (e) => {
-      // prevent click when clicking links inside details later
-      if (!expanded) {
-        // fetch script and parse metadata
-        const raw = await fetchInstallScript(pkg);
-        const meta = parseMeta(raw);
-        cachedMeta = meta;
+                        const lines = (
+                            remainder + decoder.decode(value, { stream: true })
+                        ).split("\n");
+                        remainder = lines.pop();
 
-        // Apply muted style if outdated OR trusted explicitly false
-        if (meta.outdated || meta.trusted === 'false') {
-          nameEl.classList.add('muted');
-        }
+                        lines.forEach((line) => {
+                            const t = line.trim();
+                            if (!t) return;
 
-        // Build details view
-        const infoLine = document.createElement('div');
-        infoLine.className = 'meta';
+                            if (t.includes(" - http")) {
+                                const [name, url] = t.split(" - ");
+                                current.name = name.trim();
+                                current.url = url.trim();
+                            } else if (t.startsWith("##")) {
+                                current.license = t.replace("##", "").trim();
+                            } else if (t.startsWith(">")) {
+                                if (!current.name)
+                                    current.name = t.replace(">", "").trim();
+                                else
+                                    current.description = t
+                                        .replace(">", "")
+                                        .trim();
+                            } else if (t.startsWith("version")) {
+                                current.version = t
+                                    .replace("version", "")
+                                    .trim();
+                                render(current);
+                                allPkgs.push({ ...current });
+                                current = {};
+                            }
+                        });
+                    }
+                    status.innerText = `${allPkgs.length} packages found`;
+                } catch (e) {
+                    status.innerText = "Error syncing repo.";
+                }
+            }
 
-        const version = meta.version ? `Version: ${meta.version}` : '';
-        infoLine.textContent = version;
+            function copyToClipboard(text, el) {
+                navigator.clipboard.writeText(text);
+                const originalText = el.innerText;
+                el.innerText = "COPIED!";
+                setTimeout(() => {
+                    el.innerText = originalText;
+                }, 1000);
+            }
 
-        // trusted badge
-        const tBadge = document.createElement('span');
-        tBadge.className = `badge ${meta.trusted === 'false' ? 'trusted-false' : 'trusted-true'}`;
-        tBadge.textContent = `trusted: ${meta.trusted}`;
-        infoLine.appendChild(tBadge);
+            function render(pkg) {
+                const div = document.createElement("div");
+                div.className = "package-card";
+                div.setAttribute("data-name", pkg.name.toLowerCase());
 
-        // outdated badge
-        const oBadge = document.createElement('span');
-        oBadge.className = `badge ${meta.outdated ? 'outdated-true' : ''}`;
-        if (meta.outdated) { oBadge.textContent = 'outdated: true'; infoLine.appendChild(oBadge); }
+                const installStr = `sudo car install ${pkg.name}`;
 
-        // dep tag
-        if (meta.pacmanDeps) {
-          const dTag = document.createElement('span');
-          dTag.className = 'dep-tag';
-          dTag.textContent = 'uses pacman';
-          infoLine.appendChild(dTag);
-        }
+                div.innerHTML = `
+            <div class="pkg-header">
+                <h2 class="pkg-title">${pkg.name}</h2>
+                <span class="pkg-version">v${pkg.version}</span>
+            </div>
+            <div class="pkg-license">${pkg.license || "unknown"}</div>
+            <p class="pkg-desc">${pkg.description || "A Car package."}</p>
+            <div class="install-cmd" onclick="copyToClipboard('${installStr}', this)">
+                ${installStr}
+            </div>
+            ${pkg.url ? `<a href="${pkg.url}" class="dl-link">Download Source</a>` : ""}
+        `;
+                list.appendChild(div);
+            }
 
-        // description
-        if (meta.description) {
-          const desc = document.createElement('div');
-          desc.className = 'meta';
-          desc.textContent = meta.description;
-          details.appendChild(desc);
-        }
+            function filter() {
+                const q = document.getElementById("search").value.toLowerCase();
+                document.querySelectorAll(".package-card").forEach((c) => {
+                    c.classList.toggle(
+                        "hidden",
+                        !c.getAttribute("data-name").includes(q),
+                    );
+                });
+            }
 
-        details.appendChild(infoLine);
-
-        // script block
-        const pre = document.createElement('pre');
-        pre.innerHTML = escapeHtml(meta.raw || 'Install script not found.');
-        details.appendChild(pre);
-
-        details.style.display = 'block';
-        expanded = true;
-      } else {
-        // toggle visibility
-        details.style.display = details.style.display === 'none' ? 'block' : 'none';
-      }
-    });
-
-    listEl.appendChild(item);
-  }
-}
-
-// simple search by package name
-searchEl.addEventListener('input', () => {
-  const q = searchEl.value.trim().toLowerCase();
-  if (!q) return render(allPackages);
-  render(allPackages.filter(p => p.name.toLowerCase().includes(q)));
-});
-
-loadAll();
-</script>
-
-</body>
+            streamData();
+        </script>
+    </body>
 </html>
